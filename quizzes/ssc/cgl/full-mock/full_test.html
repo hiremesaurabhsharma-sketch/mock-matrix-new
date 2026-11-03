@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mock Test - Mock Matrix New</title>
+<style>
+body{margin:0;font-family:'Segoe UI',Roboto,Arial,sans-serif;background:#eff6ff;color:#212529}
+header{background:#1e3a8a;color:#fff;padding:15px 20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap}
+.container{max-width:1000px;margin:20px auto;padding:0 20px 40px}
+.card{background:#fff;padding:25px;border-radius:15px;box-shadow:0 4px 15px rgba(0,0,0,.08);margin-bottom:20px}
+.opt{display:block;width:100%;text-align:left;margin:8px 0;padding:12px;border:1px solid #dee2e6;border-radius:10px;background:#fff;cursor:pointer}
+.opt.selected{background:#dbeafe;border-color:#2563eb}
+button{padding:10px 20px;border:none;border-radius:8px;background:#2563eb;color:#fff;font-weight:700;cursor:pointer;margin-right:8px}
+button.secondary{background:#6c757d}
+.palette{display:flex;flex-wrap:wrap;gap:8px}
+.pal{width:36px;height:36px;border-radius:8px;border:1px solid #ccc;background:#fff;cursor:pointer;padding:0}
+.pal.ans{background:#22c55e;color:#fff}.pal.cur{border:2px solid #2563eb}
+.correct{color:#15803d}.wrong{color:#dc2626}
+</style>
+</head>
+<body>
+<header><div><b id="title">Loading test...</b></div><div>⏱ <span id="timer">00:00</span></div></header>
+<div class="container">
+<div class="card" id="startCard">
+<h2 id="startTitle"></h2>
+<p id="startMeta"></p>
+<label>Apna naam (optional): <input id="userName" style="padding:8px;border-radius:8px;border:1px solid #ccc"></label><br><br>
+<button onclick="startTest()">Start Test</button>
+<p>Logic MockMatrix jaisa hai: test ka data GitHub JSON se load hota hai, timer chalta hai, answer local me save hota hai, submit par score banta hai.</p>
+</div>
+<div class="card" id="quizCard" style="display:none">
+<div id="qmeta"></div>
+<div id="question" style="font-size:18px;margin:15px 0"></div>
+<div id="options"></div>
+<div style="margin-top:15px">
+<button onclick="prevQ()">Previous</button>
+<button onclick="nextQ()">Next</button>
+<button class="secondary" onclick="clearQ()">Clear</button>
+<button onclick="submitTest()" style="background:#28a745">Submit Test</button>
+</div>
+</div>
+<div class="card" id="paletteCard" style="display:none"><h3>Question Palette</h3><div class="palette" id="palette"></div></div>
+<div class="card" id="resultCard" style="display:none"></div>
+</div>
+<script>
+const params=new URLSearchParams(location.search);
+const QUIZ_ID=params.get('quiz')||'cgl-2026-tier2-mock9-hindi';
+let QUESTIONS=[], answers={}, current=0, seconds=0, timerInterval=null, meta=null;
+function fmt(s){s=Math.max(0,s);return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')}
+async function load(){
+  const res=await fetch('./data/'+QUIZ_ID+'.json?t='+Date.now());
+  const data=await res.json(); meta=data.meta;
+  const sections=data.sections||{};
+  QUESTIONS=[]; for(const sec of Object.keys(sections)){ sections[sec].forEach(q=>{q._section=sec; QUESTIONS.push(q);}); }
+  document.getElementById('title').textContent=meta.title;
+  document.getElementById('startTitle').textContent=meta.title;
+  document.getElementById('startMeta').textContent=QUESTIONS.length+' questions | +'+meta.correct_score+' / -'+meta.negative_score+' | Time: '+meta.timer_minutes+' minutes';
+  seconds=meta.timer_seconds||7200;
+  document.getElementById('timer').textContent=fmt(seconds);
+}
+function startTest(){
+  document.getElementById('startCard').style.display='none';
+  document.getElementById('quizCard').style.display='block';
+  document.getElementById('paletteCard').style.display='block';
+  renderPalette(); showQ();
+  timerInterval=setInterval(()=>{seconds--; document.getElementById('timer').textContent=fmt(seconds); if(seconds<=0){clearInterval(timerInterval); submitTest();}},1000);
+}
+function renderPalette(){
+  const p=document.getElementById('palette'); p.innerHTML='';
+  QUESTIONS.forEach((q,i)=>{const b=document.createElement('button'); b.className='pal'+(answers[i]!==undefined?' ans':'')+(i===current?' cur':''); b.textContent=i+1; b.onclick=()=>{current=i; showQ();}; p.appendChild(b);});
+}
+function showQ(){
+  const q=QUESTIONS[current];
+  document.getElementById('qmeta').textContent='Q '+(current+1)+' / '+QUESTIONS.length+' | Section: '+q._section;
+  document.getElementById('question').innerHTML=q.question.en||q.question;
+  const o=document.getElementById('options'); o.innerHTML='';
+  for(let k=1;k<=4;k++){
+    const opt=q['option_'+k]; const txt=opt&&opt.en!==undefined?opt.en:opt;
+    if(!txt) continue;
+    const b=document.createElement('button'); b.className='opt'+(answers[current]==String(k)?' selected':''); b.innerHTML=txt;
+    b.onclick=()=>{answers[current]=String(k); showQ(); renderPalette();}; o.appendChild(b);
+  }
+  renderPalette();
+}
+function prevQ(){ if(current>0){current--; showQ();} }
+function nextQ(){ if(current<QUESTIONS.length-1){current++; showQ();} }
+function clearQ(){ delete answers[current]; showQ(); }
+function submitTest(){
+  clearInterval(timerInterval);
+  let correct=0, wrong=0, skipped=0, score=0; let html='<h2>Result</h2>';
+  QUESTIONS.forEach((q,i)=>{
+    const a=answers[i];
+    if(a===undefined){skipped++;}
+    else if(String(a)===String(q.answer)){correct++; score+=parseFloat(meta.correct_score||1);}
+    else {wrong++; score-=parseFloat(meta.negative_score||1);}
+  });
+  html+='<p><b>Score:</b> '+score+' | <b>Correct:</b> '+correct+' | <b>Wrong:</b> '+wrong+' | <b>Skipped:</b> '+skipped+' | <b>Total:</b> '+QUESTIONS.length+'</p>';
+  html+='<p>Name: '+(document.getElementById('userName').value||'-')+'</p><hr>';
+  QUESTIONS.forEach((q,i)=>{
+    const a=answers[i]; const ok=a!==undefined && String(a)===String(q.answer);
+    html+='<div style="margin-bottom:20px"><b>Q '+(i+1)+'</b> '+(q.question.en||q.question)+'<br>Your answer: '+(a||'Skipped')+' | Correct answer: '+q.answer+' <span class="'+(ok?'correct':'wrong')+'">'+(ok?'✔':'✖')+'</span>';
+    if(q.solution_text && (q.solution_text.en||q.solution_text)){ html+='<br><b>Solution:</b> '+(q.solution_text.en||q.solution_text); }
+    html+='</div>';
+  });
+  document.getElementById('quizCard').style.display='none';
+  const r=document.getElementById('resultCard'); r.style.display='block'; r.innerHTML=html; window.scrollTo(0,0);
+}
+load();
+</script>
+</body>
+</html>
