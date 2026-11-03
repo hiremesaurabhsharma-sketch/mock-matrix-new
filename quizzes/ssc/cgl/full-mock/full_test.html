@@ -49,8 +49,28 @@ const QUIZ_ID=params.get('quiz')||'cgl-2026-tier2-mock9-hindi';
 let QUESTIONS=[], answers={}, current=0, seconds=0, timerInterval=null, meta=null;
 function fmt(s){s=Math.max(0,s);return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')}
 async function load(){
-  const res=await fetch('./data/'+QUIZ_ID+'.json?t='+Date.now());
-  const data=await res.json(); meta=data.meta;
+  let data=null;
+  try{
+    const res=await fetch('./data/'+QUIZ_ID+'.json?t='+Date.now());
+    if(res.ok){ data=await res.json(); }
+  }catch(e){}
+  if(!data){
+    // GitHub push ke liye data 13 chunks me hai, unko jod kar load karo
+    QUESTIONS=[]; meta=null;
+    const chunkNames=['chunk-01','chunk-02','chunk-03','chunk-04','chunk-05','chunk-06','chunk-07','chunk-08','chunk-09','chunk-10','chunk-11','chunk-12a','chunk-12b','chunk-13a','chunk-13b'];
+    for(const cn of chunkNames){
+      const r=await fetch('./data/chunks/'+cn+'.json?t='+Date.now());
+      const c=await r.json(); if(!meta) meta=c.meta;
+      c.questions.forEach(q=>{q._section='MOCK TEST'; QUESTIONS.push(q);});
+    }
+    document.getElementById('title').textContent=meta.title;
+    document.getElementById('startTitle').textContent=meta.title;
+    document.getElementById('startMeta').textContent=QUESTIONS.length+' questions | +'+meta.correct_score+' / -'+meta.negative_score+' | Time: '+meta.timer_minutes+' minutes';
+    seconds=meta.timer_seconds||7200;
+    document.getElementById('timer').textContent=fmt(seconds);
+    return;
+  }
+  meta=data.meta;
   const sections=data.sections||{};
   QUESTIONS=[]; for(const sec of Object.keys(sections)){ sections[sec].forEach(q=>{q._section=sec; QUESTIONS.push(q);}); }
   document.getElementById('title').textContent=meta.title;
